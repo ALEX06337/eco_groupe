@@ -86,7 +86,6 @@ library(ggplot2)
 
 
 ui <- fluidPage(
-
     titlePanel("Analyse et prédiction du cours des actions"),
     hr(),
     actionButton('help','Instruction Book'),
@@ -95,13 +94,14 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             textInput('entreprise', 'Write ton entreprise', value = "AAPL"),
-            numericInput('date', 'Sur combien de trimestre la prédiction', value = 0)
+            selectInput('period', "Choice your periode", choices = c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')),
+            uiOutput('dynamic_period')
         ),
         mainPanel(
           tabsetPanel(
             tabPanel(
               'Plot',
-              uiOutput('dynamic_ui'),
+              uiOutput('dynamic_var'),
               plotOutput("plot")
             ),
             tabPanel('Table', dataTableOutput("table"))
@@ -112,10 +112,15 @@ ui <- fluidPage(
 
 
 
+
+
+
+
 server <- function(input, output) {
   recup <- reactive({
     df <- getSymbols(input$entreprise, src = "yahoo", auto.assign = FALSE)
     df <- data.frame(Date = index(df), coredata(df))
+    #df_inverse <- df[nrow(df):1, ]
   })
   
   observeEvent(input$help, {
@@ -126,8 +131,11 @@ server <- function(input, output) {
   })
   
   
+ output$dynamic_period <- renderUI({
+    numericInput('date', paste('Sur combien de', input$period, 'la prédiction'), value = 2, min = 1)
+  })
  
-  output$dynamic_ui <- renderUI({
+  output$dynamic_var <- renderUI({
     validate(
       need(input$entreprise != "", "\n")
     )
@@ -135,7 +143,7 @@ server <- function(input, output) {
     selectInput('var', 'Choice Y', choices = unique(colnames(df[-1])))
   })
   
-  
+
   
   
   
@@ -153,5 +161,74 @@ server <- function(input, output) {
 
 shinyApp(ui = ui, server = server)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+jour <- c(365,3*30,30,7,1)
+names(jour) <- c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')
+jour["An"]
+
+df <- getSymbols("aapl", src = "yahoo", auto.assign = FALSE)
+df <- data.frame(Date = index(df), coredata(df))
+df
+
+tail(df, n = 10)
+
+
+
+  
+
+nui <- 15
+n <- 12
+nfinal <- n + nui
+y <- tail(df[["AAPL.Open"]], n = n)
+x <- 1:n
+b <- exp(coef(lm(log(y) ~ x))["x"]) # Pente
+a <- exp(coef(lm(log(y) ~ x))["(Intercept)"]) # Origine
+
+Ct <- a*b^x
+Ctfinal <- a*b^(1:(nfinal))
+
+tableau <- array(y/Ct, dim = c(2, 2, n/4))
+
+
+Siprime <- function(tableau, sum = 0, Si = 0) {
+  nmat <- length(tableau)/4
+  for (row in 1:2) {
+    for (col in 1:2) {
+      for (mat in 1:nmat) {
+        sum <- sum + tableau[row,col,mat]
+      }
+      Si <- c(Si, sum/nmat)
+      sum <- 0
+    }
+  }
+  Si <- Si[-1]
+  Siprime <- Si/mean(Si)
+  return(Siprime)
+}
+
+Stfinal <- c(rep(Siprime(tableau), times = (n/4 + (nui-(nui%%4))/4)), Siprime(tableau)[1:(nui%%4)])
+modele <- Ctfinal*Stfinal
+plot((1:nfinal), modele)
+```
+
+
 
 
