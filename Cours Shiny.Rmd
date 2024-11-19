@@ -1,0 +1,157 @@
+---
+title: "Cours Shiny"
+author: "Moi"
+date: "2024-09-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(shiny)
+library(babynames)
+library(ggplot2)
+library(dplyr)
+
+
+ui <- fluidPage(
+  titlePanel("Introduction to Shiny"),
+  h3("Hello Shiny !"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput('name', "What's your name ?"),
+      selectInput('sex', "Choice the sex :", c("M", "F"), "F"),
+      dateRangeInput('birthday', "Put your birthday :", start = "2000-01-01", end = "2024-11-12"),
+      
+      sliderInput('year', "Choice the year", min(babynames$year), max(babynames$year),
+                  value = (min(babynames$year) + max(babynames$year)) / 2, step = 1),
+      actionButton('show_result', "Show the result")
+    ),
+    mainPanel(
+      textOutput("text"),
+      tabsetPanel(
+        tabPanel("Plot", plotOutput("plot")),
+        tabPanel("Table", tableOutput("table"))
+      )
+    )
+  )
+)
+
+
+server <- function(input, output){
+  top_bbnames <- eventReactive(input$show_result, {
+    babynames %>%
+      filter(sex == input$sex) %>%
+      filter(year == input$year) %>%
+      slice_max(n, n = 10)
+  })
+  
+  observeEvent(input$show_result, {
+    showModal(modalDialog(paste("The result is coming...")))
+  })
+  
+  output$text <- renderText({
+    validate(
+      need(input$name != "", "Please, enter your name !!")
+    )
+    showModal(modalDialog(paste("Choice your settings and see the result !")))
+    paste("Hello,", input$name, "! Choice your settings and see the result !")
+  })
+
+    
+    
+    
+  output$plot <- renderPlot({  
+    ggplot(top_bbnames(), aes(x = reorder(name, -n), y = n)) + geom_col()
+  })
+  
+  output$table <- renderTable({
+    top_bbnames()
+  })
+  
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+
+```{r}
+library(shiny)
+library(quantmod)
+library(ggplot2)
+
+
+ui <- fluidPage(
+
+    titlePanel("Analyse et prédiction du cours des actions"),
+    hr(),
+    actionButton('help','Instruction Book'),
+    actionButton('nom_entreprise','Find ton entreprise', onclick = "window.open('https://fr.finance.yahoo.com/', '_blank')"),
+    br(),
+    sidebarLayout(
+        sidebarPanel(
+            textInput('entreprise', 'Write ton entreprise', value = "AAPL"),
+            numericInput('date', 'Sur combien de trimestre la prédiction', value = 0)
+        ),
+        mainPanel(
+          tabsetPanel(
+            tabPanel(
+              'Plot',
+              uiOutput('dynamic_ui'),
+              plotOutput("plot")
+            ),
+            tabPanel('Table', dataTableOutput("table"))
+          )
+        )
+    )
+)
+
+
+
+server <- function(input, output) {
+  recup <- reactive({
+    df <- getSymbols(input$entreprise, src = "yahoo", auto.assign = FALSE)
+    df <- data.frame(Date = index(df), coredata(df))
+  })
+  
+  observeEvent(input$help, {
+    showModal(modalDialog(
+      title = "Mode Action",
+      "Entrer le symbole du nom de l'action choisi (le nom entre parenthèse) et le nombre de trimestre pour la prévision")
+      )
+  })
+  
+  
+ 
+  output$dynamic_ui <- renderUI({
+    validate(
+      need(input$entreprise != "", "\n")
+    )
+    df <- recup()
+    selectInput('var', 'Choice Y', choices = unique(colnames(df[-1])))
+  })
+  
+  
+  
+  
+  
+  output$plot <- renderPlot({
+    validate(
+      need(input$entreprise != "", "Please, enter your entreprise !!")
+    )
+    ggplot(recup(), aes(x = Date, y = .data[[input$var]])) + geom_line() + labs(title = paste("Prévision de", input$var, "pour", input$entreprise))
+  })
+
+  output$table <- DT::renderDataTable({
+    recup()
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
