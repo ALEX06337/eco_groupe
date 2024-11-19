@@ -10,118 +10,91 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+
+
+
 ```{r}
 library(shiny)
-library(babynames)
+library(shinyWidgets)
+library(quantmod)
 library(ggplot2)
 library(dplyr)
 
 
+df1 <- read.csv2("NYSE.csv", header = TRUE, sep = ";")
+
 ui <- fluidPage(
-  titlePanel("Introduction to Shiny"),
-  h3("Hello Shiny !"),
+  titlePanel("Analyse et prédiction du cours des actions"),
+  hr(),
+  actionButton('help','Instruction Book'),
+  actionButton('yahoo','Yahoo', onclick = "window.open('https://fr.finance.yahoo.com/', '_blank')"),
+  br(),
+  br(),
   sidebarLayout(
     sidebarPanel(
-      textInput('name', "What's your name ?"),
-      selectInput('sex', "Choice the sex :", c("M", "F"), "F"),
-      dateRangeInput('birthday', "Put your birthday :", start = "2000-01-01", end = "2024-11-12"),
+      selectizeInput(
+        inputId = "entreprise",
+        label = "Tapez ou sélectionnez :",
+        choices = unique(df1$Description),
+        options = list(
+            placeholder = "Commencez à taper...",
+            create = FALSE
+        )
+      ),
       
-      sliderInput('year', "Choice the year", min(babynames$year), max(babynames$year),
-                  value = (min(babynames$year) + max(babynames$year)) / 2, step = 1),
-      actionButton('show_result', "Show the result")
+      selectInput('period', "Choice your periode", choices = c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')),
+      
+      uiOutput('dynamic_period')
+        
     ),
     mainPanel(
-      textOutput("text"),
       tabsetPanel(
-        tabPanel("Plot", plotOutput("plot")),
-        tabPanel("Table", tableOutput("table"))
+        tabPanel(
+          'Plot',
+          br(),
+          uiOutput('dynamic_var'),
+          plotOutput("plot")
+        ),
+        tabPanel('Table',
+                 br(),
+                 DT::DTOutput("table")
+        )
       )
     )
   )
 )
 
 
-server <- function(input, output){
-  top_bbnames <- eventReactive(input$show_result, {
-    babynames %>%
-      filter(sex == input$sex) %>%
-      filter(year == input$year) %>%
-      slice_max(n, n = 10)
-  })
-  
-  observeEvent(input$show_result, {
-    showModal(modalDialog(paste("The result is coming...")))
-  })
-  
-  output$text <- renderText({
-    validate(
-      need(input$name != "", "Please, enter your name !!")
-    )
-    showModal(modalDialog(paste("Choice your settings and see the result !")))
-    paste("Hello,", input$name, "! Choice your settings and see the result !")
-  })
-
-    
-    
-    
-  output$plot <- renderPlot({  
-    ggplot(top_bbnames(), aes(x = reorder(name, -n), y = n)) + geom_col()
-  })
-  
-  output$table <- renderTable({
-    top_bbnames()
-  })
-  
-}
-
-shinyApp(ui = ui, server = server)
-```
-
-
-
-```{r}
-library(shiny)
-library(quantmod)
-library(ggplot2)
-
-
-ui <- fluidPage(
-    titlePanel("Analyse et prédiction du cours des actions"),
-    hr(),
-    actionButton('help','Instruction Book'),
-    actionButton('nom_entreprise','Find ton entreprise', onclick = "window.open('https://fr.finance.yahoo.com/', '_blank')"),
-    br(),
-    sidebarLayout(
-        sidebarPanel(
-            textInput('entreprise', 'Write ton entreprise', value = "AAPL"),
-            selectInput('period', "Choice your periode", choices = c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')),
-            uiOutput('dynamic_period')
-        ),
-        mainPanel(
-          tabsetPanel(
-            tabPanel(
-              'Plot',
-              uiOutput('dynamic_var'),
-              plotOutput("plot")
-            ),
-            tabPanel('Table', dataTableOutput("table"))
-          )
-        )
-    )
-)
-
-
-
-
-
-
-
 server <- function(input, output) {
+  symbol <- reactive({
+    df1[df1$Description == input$entreprise, "Symbol"]
+  })
+  
   recup <- reactive({
-    df <- getSymbols(input$entreprise, src = "yahoo", auto.assign = FALSE)
+    df <- getSymbols(symbol(), src = "yahoo", auto.assign = FALSE)
     df <- data.frame(Date = index(df), coredata(df))
     #df_inverse <- df[nrow(df):1, ]
+    return(df)
   })
+  
+  
+  
+  observe({
+      req(input$search) # Nécessite une entrée utilisateur
+      updatePickerInput(
+          session = session,
+          inputId = "search",
+          choices = items[grepl(input$search, items, ignore.case = TRUE)]
+      )
+  })
+  
+  
+  
+  
+  
+  
+  
+  
   
   observeEvent(input$help, {
     showModal(modalDialog(
@@ -147,11 +120,18 @@ server <- function(input, output) {
   
   
   
+  
+  
+  
+  
+  
+  
+  
   output$plot <- renderPlot({
     validate(
       need(input$entreprise != "", "Please, enter your entreprise !!")
     )
-    ggplot(recup(), aes(x = Date, y = .data[[input$var]])) + geom_line() + labs(title = paste("Prévision de", input$var, "pour", input$entreprise))
+    ggplot(recup(), aes(x = Date, y = .data[[input$var]])) + geom_line() + labs(title = paste("Prévision de", input$var, "pour", symbol()))
   })
 
   output$table <- DT::renderDataTable({
