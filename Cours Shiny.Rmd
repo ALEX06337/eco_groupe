@@ -21,7 +21,15 @@ library(ggplot2)
 library(dplyr)
 
 
-df1 <- read.csv2("NYSE.csv", header = TRUE, sep = ";")
+file <- "NYSE.csv"
+df1 <- read.csv2(file, header = TRUE, sep = ";")
+# Ajoute un symbol et sa description (à la main, j'ai pas confiance aux utilisateurs) ok Vlad ? ;)
+# (df1 <- rbind(df1, c("symbol", "la description")))
+# write.csv2(df1, file = file, row.names = FALSE)
+
+day <- c(1, 7, 30, 90, 365)
+names(day) <- c('Jour', 'Semaine', 'Mois', 'Trimestre', 'An')
+
 
 ui <- fluidPage(
   titlePanel("Analyse et prédiction du cours des actions"),
@@ -34,15 +42,16 @@ ui <- fluidPage(
     sidebarPanel(
       selectizeInput(
         inputId = "entreprise",
-        label = "Tapez ou sélectionnez :",
+        label = "Tapez et sélectionnez :",
         choices = unique(df1$Description),
         options = list(
             placeholder = "Commencez à taper...",
-            create = FALSE
+            create = TRUE
         )
       ),
+      uiOutput('dynamic_var'),
       
-      selectInput('period', "Choice your periode", choices = c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')),
+      selectInput('period', "Choice your periode", choices = c('Jour', 'Semaine', 'Mois', 'Trimestre', 'An')),
       
       uiOutput('dynamic_period')
         
@@ -50,14 +59,29 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel(
-          'Plot',
-          br(),
-          uiOutput('dynamic_var'),
-          plotOutput("plot")
+          "Global",
+          tabsetPanel(
+            tabPanel(
+              'Plot',
+               br(),
+              plotOutput("plot")
+            ),
+            tabPanel(
+              'Table',
+               br(),
+               DT::DTOutput("table")
+            )
+          )
         ),
-        tabPanel('Table',
-                 br(),
-                 DT::DTOutput("table")
+        tabPanel(
+          "Prévision",
+          tabsetPanel(
+            tabPanel(
+              "Exponentiel",
+              br(),
+              plotOutput("expo")
+            )
+          )
         )
       )
     )
@@ -66,77 +90,152 @@ ui <- fluidPage(
 
 
 server <- function(input, output) {
+  observeEvent(input$help, {
+    showModal(modalDialog(
+        title = "Mode Action",
+        "Entrer le symbole du nom de l'action choisi (le nom entre parenthèse) et le nombre de trimestre pour la prévision")
+      )
+  })
+  
   symbol <- reactive({
-    df1[df1$Description == input$entreprise, "Symbol"]
+    if (nrow(df1[df1$Description == input$entreprise, ]) == 0) {
+      input$entreprise
+    } else {
+      df1[df1$Description == input$entreprise, "Symbol"]
+    }
   })
   
   recup <- reactive({
-    df <- getSymbols(symbol(), src = "yahoo", auto.assign = FALSE)
-    df <- data.frame(Date = index(df), coredata(df))
-    #df_inverse <- df[nrow(df):1, ]
+    df <- tryCatch(
+      {
+        # Code pouvant provoquer une erreur
+        getSymbols(symbol(), src = "yahoo", auto.assign = FALSE)
+      },
+      error = function(e) {
+        # Action en cas d'erreur (pas d'erreur ici mais personne connaît l'avenir)
+        df1 <- df1[df1$Symbol != symbol(), ] # Supprime le symbole
+        write.csv2(df1, file = file, row.names = FALSE) # Mise à jour du fichier
+        
+        print("Une erreur est survenue :")
+        print(e$message)
+        return(NULL) # Retourner une valeur par défaut
+      },
+      warning = function(w) {
+        # Action en cas d'avertissement
+        df1 <- df1[df1$Symbol != symbol(), ]
+        write.csv2(df1, file = file, row.names = FALSE)
+        
+        print("Un avertissement est survenu :")
+        print(w$message)
+        return(NULL)
+      },
+      finally = {
+        # Action à effectuer quoi qu'il arrive
+        print("Fin de l'exécution.")
+      }
+    )
+    if (is.null(df) == FALSE) {
+      df <- data.frame(Date = index(df), coredata(df))
+    }
+    
     return(df)
   })
   
-  
-  
-  observe({
-      req(input$search) # Nécessite une entrée utilisateur
-      updatePickerInput(
-          session = session,
-          inputId = "search",
-          choices = items[grepl(input$search, items, ignore.case = TRUE)]
-      )
-  })
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  observeEvent(input$help, {
-    showModal(modalDialog(
-      title = "Mode Action",
-      "Entrer le symbole du nom de l'action choisi (le nom entre parenthèse) et le nombre de trimestre pour la prévision")
-      )
-  })
-  
-  
- output$dynamic_period <- renderUI({
-    numericInput('date', paste('Sur combien de', input$period, 'la prédiction'), value = 2, min = 1)
-  })
- 
   output$dynamic_var <- renderUI({
     validate(
       need(input$entreprise != "", "\n")
     )
-    df <- recup()
-    selectInput('var', 'Choice Y', choices = unique(colnames(df[-1])))
+    if (is.null(recup()) == FALSE) {
+      df <- recup()
+      selectInput('var', 'Choice Y', choices = unique(colnames(df[-1])))
+    }
   })
   
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+  # Global
   output$plot <- renderPlot({
     validate(
-      need(input$entreprise != "", "Please, enter your entreprise !!")
+      need(input$entreprise != "", "Please, enter your entreprise !"),
     )
-    ggplot(recup(), aes(x = Date, y = .data[[input$var]])) + geom_line() + labs(title = paste("Prévision de", input$var, "pour", symbol()))
+    if (is.null(recup()) == FALSE) {
+      ggplot(recup(), aes(x = Date, y = .data[[input$var]])) + geom_line() + labs(title = paste("Prévision de", input$var, "pour", input$entreprise))
+    } else {
+      showModal(modalDialog(
+        title = "Error",
+        "Yahoo ne reconnaît plus cette entreprise, veuillez en entrer une autre !")
+      )
+    }
   })
 
   output$table <- DT::renderDataTable({
+    validate(
+      need(is.null(recup()) == FALSE, "Please, enter an other entreprise !")
+    )
     recup()
   })
+  
+  
+  # Prévision
+   output$dynamic_period <- renderUI({
+    numericInput('date', paste('Sur combien de', input$period, 'la prédiction'), value = 2, min = 1)
+  })
+   
+  ## Exponentielle
+  expo <- function(df){
+    nui <- input$date * day[input$period]
+    n <- ifelse(nui*16<4500, nui*16, 4500)
+    nfinal <- n + nui
+    y <- tail(df[[input$var]], n = n)
+    x <- 1:n
+    b <- exp(coef(lm(log(y) ~ x))["x"]) # Pente
+    a <- exp(coef(lm(log(y) ~ x))["(Intercept)"]) # Origine
+    
+    Ct <- a*b^x
+    Ctfinal <- a*b^(1:(nfinal))
+    
+    tableau <- array(y/Ct, dim = c(2, 2, n/4))
+    
+    
+    Siprime <- function(tableau, sum = 0, Si = 0) {
+      nmat <- length(tableau)/4
+      for (row in 1:2) {
+        for (col in 1:2) {
+          for (mat in 1:nmat) {
+            sum <- sum + tableau[row,col,mat]
+          }
+          Si <- c(Si, sum/nmat)
+          sum <- 0
+        }
+      }
+      Si <- Si[-1]
+      Siprime <- Si/mean(Si)
+      return(Siprime)
+    }
+    
+    if (nui%%4 == 0) {
+      Stfinal <- c(rep(Siprime(tableau), times = (n/4 + (nui-(nui%%4))/4)))
+    } else {
+      Stfinal <- c(rep(Siprime(tableau), times = (n/4 + (nui-(nui%%4))/4)), Siprime(tableau)[1:(nui%%4)])
+    }
+    
+    modele <- Ctfinal*Stfinal
+    plot((1:nfinal), modele, type = "l")
+  }
+  
+  output$expo <- renderPlot({
+    validate(
+      need(is.null(recup()) == FALSE, "Please, enter an other entreprise !")
+    )
+    expo(recup())
+  })
+  
+
+  
+  
+  
+  
+  
+  
+  
 }
 
 shinyApp(ui = ui, server = server)
