@@ -14,6 +14,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
+
+
+
+
 library(shiny)
 library(shinyWidgets)
 library(quantmod)
@@ -239,6 +243,17 @@ server <- function(input, output) {
 }
 
 shinyApp(ui = ui, server = server)
+
+
+
+
+
+
+
+
+
+
+
 ```
 
 
@@ -259,6 +274,10 @@ shinyApp(ui = ui, server = server)
 
 
 ```{r}
+df1
+v <- df1$Symbol
+(names(v) <- df1$Description)
+v
 jour <- c(365,3*30,30,7,1)
 names(jour) <- c('An', 'Trimestre', 'Mois', 'Semaine', 'Jour')
 jour["An"]
