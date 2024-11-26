@@ -67,7 +67,11 @@ ui <- fluidPage(
             tabPanel(
               "Action",
               br(),
-              plotOutput("action")
+              plotOutput("action")),
+            tabPanel(
+                "Le meilleur",
+                br(),
+                plotOutput("best")
             )
           )
         )
