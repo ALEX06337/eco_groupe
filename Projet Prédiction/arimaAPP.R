@@ -8,7 +8,7 @@ library(DT)
 
 
 
-file <- "/Users/alexandrediep/eco_groupe/Projet Prédiction/data/NYSE.csv"
+file <- "data/NYSE.csv"
 df1 <- read.csv2(file, header = TRUE, sep = ";")
 
 
